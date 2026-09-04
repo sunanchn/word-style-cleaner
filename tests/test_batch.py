@@ -114,6 +114,53 @@ def test_progress_callback_reports_every_file_before_processing(tmp_path):
     assert calls == [(1, 3, 'a.docx'), (2, 3, 'b.docx'), (3, 3, 'c.docx')]
 
 
+def test_overwrite_single_file_replaces_original_without_q_copy(tmp_path):
+    src = make_docx(tmp_path / 'a.docx')
+
+    result = run_batch(str(src), overwrite=True)
+
+    assert len(result.results) == 1
+    report = result.results[0]
+    assert report.ok
+    assert report.output_path == str(src)
+    assert '未使用样式' not in style_names(src)
+    assert not (tmp_path / 'a_Q.docx').exists()
+
+
+def test_overwrite_folder_replaces_originals_without_q_copies(tmp_path):
+    make_docx(tmp_path / 'a.docx', unused_style='甲样式')
+    make_docx(tmp_path / 'b.docx', unused_style='乙样式')
+
+    result = run_batch(str(tmp_path), overwrite=True)
+
+    assert len(result.succeeded) == 2
+    for r in result.results:
+        assert r.output_path == r.input_path
+    assert '甲样式' not in style_names(tmp_path / 'a.docx')
+    assert '乙样式' not in style_names(tmp_path / 'b.docx')
+    assert list(tmp_path.glob('*_Q*.docx')) == []
+
+
+def test_overwrite_save_failure_leaves_original_intact(tmp_path, monkeypatch):
+    src = make_docx(tmp_path / 'a.docx')
+
+    def half_written_save(self, path):
+        with open(path, 'wb') as f:
+            f.write('PK\x03\x04 写一半的损坏内容'.encode('utf-8'))
+        raise OSError('模拟保存中途失败')
+
+    monkeypatch.setattr('docx.document.Document.save', half_written_save)
+
+    result = run_batch(str(src), overwrite=True)
+
+    report = result.results[0]
+    assert not report.ok
+    assert report.output_path is None
+    # 原文件完好无损，也没有留下临时文件
+    assert '未使用样式' in style_names(src)
+    assert list(tmp_path.glob('*.tmp')) == []
+
+
 def test_invalid_target_raises_value_error(tmp_path):
     with pytest.raises(ValueError):
         run_batch(str(tmp_path / '不存在.docx'))

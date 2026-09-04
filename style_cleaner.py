@@ -47,6 +47,11 @@ class WordStyleCleaner:
         self.remove_button = tk.Button(action_frame, text='删除未使用的样式', command=self.remove_unused_styles)
         self.remove_button.pack(side=tk.LEFT)
 
+        # 覆盖模式开关：默认关闭（默认产 _Q 副本，原文件不动）
+        self.overwrite_var = tk.BooleanVar(value=False)
+        overwrite_check = tk.Checkbutton(action_frame, text='覆盖原文件', variable=self.overwrite_var)
+        overwrite_check.pack(side=tk.LEFT, padx=5)
+
         # 创建进度条
         self.progress_var = tk.DoubleVar()
         self.progress_bar = ttk.Progressbar(action_frame, variable=self.progress_var, length=300)
@@ -100,13 +105,18 @@ class WordStyleCleaner:
             messagebox.showwarning("警告", "请先选择文件或文件夹")
             return
 
+        overwrite = self.overwrite_var.get()
+        if overwrite and not self._confirm_overwrite(target):
+            self.status_var.set("已取消覆盖模式清理，未做任何修改")
+            return
+
         # 禁用按钮防止重复点击
         self.remove_button.config(state=tk.DISABLED)
         self.status_var.set("正在处理...")
         self.root.update()
 
         try:
-            result = run_batch(target, on_progress=self._on_batch_progress)
+            result = run_batch(target, on_progress=self._on_batch_progress, overwrite=overwrite)
 
             if not result.results:
                 messagebox.showinfo("提示", "所选文件夹中没有找到Word文档(.docx)")
@@ -126,7 +136,8 @@ class WordStyleCleaner:
                 )
                 self.status_var.set("处理完成（有失败）")
             else:
-                messagebox.showinfo("完成", "样式清理完成！")
+                done_msg = "样式清理完成（已覆盖原文件）！" if overwrite else "样式清理完成！"
+                messagebox.showinfo("完成", done_msg)
                 self.status_var.set("处理完成")
 
         except Exception as e:
@@ -136,6 +147,18 @@ class WordStyleCleaner:
             # 恢复按钮状态
             self.remove_button.config(state=tk.NORMAL)
             self.progress_var.set(0)
+
+    def _confirm_overwrite(self, target) -> bool:
+        """覆盖模式执行前的确认弹窗，返回是否继续。"""
+        if os.path.isdir(target):
+            detail = f"目标文件夹：{target}\n包含 {len(discover_docx(target))} 个Word文档(.docx)"
+        else:
+            detail = f"目标文件：{target}"
+        return messagebox.askyesno(
+            "确认覆盖",
+            f"已开启覆盖模式：清理结果将直接替换原文件，不再生成 _Q 副本，此操作无法撤销。\n\n{detail}\n\n确定继续吗？",
+            default=messagebox.NO,
+        )
 
     def _on_batch_progress(self, index, total, input_path):
         """batch module 的进度回调：刷新状态栏、进度条并重绘，避免白屏。"""
