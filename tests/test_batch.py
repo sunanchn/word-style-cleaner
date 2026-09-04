@@ -114,6 +114,49 @@ def test_progress_callback_reports_every_file_before_processing(tmp_path):
     assert calls == [(1, 3, 'a.docx'), (2, 3, 'b.docx'), (3, 3, 'c.docx')]
 
 
+def test_file_done_callback_reports_completed_count_after_each_file(tmp_path):
+    make_docx(tmp_path / 'a.docx')
+    make_docx(tmp_path / 'b.docx')
+    calls = []
+
+    run_batch(
+        str(tmp_path),
+        on_file_done=lambda completed, total: calls.append((completed, total)),
+    )
+
+    # completed 是已完成数（含刚处理完的文件），不是下一个文件的序号
+    assert calls == [(1, 2), (2, 2)]
+
+
+def test_file_done_callback_fires_for_failed_files_too(tmp_path):
+    (tmp_path / '1坏.docx').write_bytes(b'not a real docx')
+    make_docx(tmp_path / '2好.docx')
+    calls = []
+
+    run_batch(
+        str(tmp_path),
+        on_file_done=lambda completed, total: calls.append(completed),
+    )
+
+    # 失败的文件也算"已处理完一个"，批继续走
+    assert calls == [1, 2]
+
+
+def test_file_done_callback_interleaves_after_progress(tmp_path):
+    make_docx(tmp_path / 'a.docx')
+    make_docx(tmp_path / 'b.docx')
+    calls = []
+
+    run_batch(
+        str(tmp_path),
+        on_progress=lambda i, total, path: calls.append(('start', i)),
+        on_file_done=lambda completed, total: calls.append(('done', completed)),
+    )
+
+    # 每个文件先 start 后 done，交替推进
+    assert calls == [('start', 1), ('done', 1), ('start', 2), ('done', 2)]
+
+
 def test_overwrite_single_file_replaces_original_without_q_copy(tmp_path):
     src = make_docx(tmp_path / 'a.docx')
 

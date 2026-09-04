@@ -100,10 +100,12 @@ def _clean_file(input_path: str, overwrite: bool = False) -> FileResult:
         return FileResult(input_path=input_path, error=f'{type(e).__name__}: {e}')
 
 
-def run_batch(target: str, on_progress=None, overwrite: bool = False) -> BatchResult:
+def run_batch(target: str, on_progress=None, overwrite: bool = False, on_file_done=None) -> BatchResult:
     """批量清理 target（单个 .docx 或文件夹），返回逐文件的 BatchResult。
 
-    on_progress(index, total, input_path) 在每个文件处理前回调一次。
+    on_progress(index, total, input_path) 在每个文件处理前回调一次；
+    on_file_done(completed, total) 在每个文件处理完（无论成败）后回调一次，
+    completed 为已完成文件数。两个回调只报数据，渲染归 adapter。
     默认产出 `_Q` 副本；overwrite=True 时清理结果写回原文件路径，
     不产 `_Q` 副本（覆盖模式的确认由 adapter 负责，本 module 不弹窗）。
     单个文件失败记录到结果后继续，不中断批次；target 无效时抛 ValueError。
@@ -120,5 +122,8 @@ def run_batch(target: str, on_progress=None, overwrite: bool = False) -> BatchRe
     for index, input_path in enumerate(input_paths, start=1):
         if on_progress:
             on_progress(index, total, input_path)
-        results.append(_clean_file(input_path, overwrite=overwrite))
+        file_result = _clean_file(input_path, overwrite=overwrite)
+        results.append(file_result)
+        if on_file_done:
+            on_file_done(index, total)
     return BatchResult(results=results)

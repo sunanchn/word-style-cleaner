@@ -1,5 +1,12 @@
+"""GUI adapter：Tk 界面、线程调度与进度分档渲染；清理逻辑在 batch/cleaner。
+
+批量清理跑在后台线程（#9），进度与结果经队列回主线程轮询渲染——
+worker 不触碰任何 widget，状态栏/进度条/弹窗只发生在主线程。
+"""
 import os
+import queue
 import sys
+import threading
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk, scrolledtext
 
@@ -14,6 +21,12 @@ CATEGORY_LABELS = {
     StyleCategory.OTHER: '其他',
 }
 
+# 进度分档阈值（#10）：文件数超过它时状态栏改报「已处理 i 个」（已完成数），不报当前序号
+MANY_FILES_THRESHOLD = 10
+
+# 主线程轮询批处理事件队列的间隔（毫秒）
+_PROGRESS_POLL_MS = 50
+
 class WordStyleCleaner:
     def __init__(self, root):
         self.root = root
@@ -22,6 +35,12 @@ class WordStyleCleaner:
 
         # 创建UI组件
         self.create_widgets()
+
+        # 批处理状态（#9）：后台线程把事件塞进队列，主线程轮询渲染
+        self.batch_queue = queue.Queue()
+        self.batch_thread = None
+        self._batch_running = False
+        self._batch_overwrite = False
 
     def create_widgets(self):
         # 创建选择文件或者文件夹的框架
@@ -35,11 +54,11 @@ class WordStyleCleaner:
         file_path_entry = tk.Entry(selection_frame, textvariable=self.file_path_var)
         file_path_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
 
-        choose_file_button = tk.Button(selection_frame, text='选择文件', command=self.choose_file)
-        choose_file_button.pack(side=tk.LEFT, padx=2)
+        self.choose_file_button = tk.Button(selection_frame, text='选择文件', command=self.choose_file)
+        self.choose_file_button.pack(side=tk.LEFT, padx=2)
 
-        choose_folder_button = tk.Button(selection_frame, text='选择文件夹', command=self.choose_folder)
-        choose_folder_button.pack(side=tk.LEFT, padx=2)
+        self.choose_folder_button = tk.Button(selection_frame, text='选择文件夹', command=self.choose_folder)
+        self.choose_folder_button.pack(side=tk.LEFT, padx=2)
 
         # 创建处理按钮和进度条
         action_frame = tk.Frame(self.root)
@@ -101,6 +120,9 @@ class WordStyleCleaner:
             self._clear_results()
 
     def remove_unused_styles(self):
+        if self._batch_running:
+            return  # 批次进行中：防御路径（如渲染异常恢复按钮后）也不允许重入
+
         target = self.file_path_var.get()
         if not target:
             messagebox.showwarning("警告", "请先选择文件或文件夹")
@@ -111,43 +133,127 @@ class WordStyleCleaner:
             self.status_var.set("已取消覆盖模式清理，未做任何修改")
             return
 
-        # 禁用按钮防止重复点击
-        self.remove_button.config(state=tk.DISABLED)
+        # 批次开跑：禁用按钮防重复点击与中途换目标，进度条归零
+        self._set_processing_state(processing=True)
         self.status_var.set("正在处理...")
-        self.root.update()
+        self._stop_progress_bar()
 
+        # 批量清理放后台线程（#9），进度与结果经队列回主线程轮询渲染
+        self.batch_queue = queue.Queue()
+        self._batch_running = True
+        self._batch_overwrite = overwrite
+        self.batch_thread = threading.Thread(
+            target=self._batch_worker,
+            args=(target, overwrite, self.batch_queue),
+            daemon=True,
+        )
+        self.batch_thread.start()
+        self.root.after(_PROGRESS_POLL_MS, self._poll_batch_events)
+
+    def _batch_worker(self, target, overwrite, events):
+        """后台线程体：跑批量清理，把进度与结果事件塞进队列。只报数据，不碰 widget。"""
         try:
-            result = run_batch(target, on_progress=self._on_batch_progress, overwrite=overwrite)
-
-            if not result.results:
-                messagebox.showinfo("提示", "所选文件夹中没有找到Word文档(.docx)")
-                self.status_var.set("就绪")
-                return
-
-            self._render_results(result)
-
-            failed = result.failed
-            if failed:
-                summary = "\n".join(
-                    f"{os.path.basename(r.input_path)}：{r.error}" for r in failed
-                )
-                messagebox.showwarning(
-                    "完成",
-                    f"样式清理完成：成功 {len(result.succeeded)} 个，失败 {len(failed)} 个\n\n{summary}",
-                )
-                self.status_var.set("处理完成（有失败）")
-            else:
-                done_msg = "样式清理完成（已覆盖原文件）！" if overwrite else "样式清理完成！"
-                messagebox.showinfo("完成", done_msg)
-                self.status_var.set("处理完成")
-
+            result = run_batch(
+                target,
+                on_progress=lambda index, total, path: events.put(('start', index, total, path)),
+                on_file_done=lambda completed, total: events.put(('file_done', completed, total)),
+                overwrite=overwrite,
+            )
+            events.put(('finished', result))
         except Exception as e:
-            messagebox.showerror("错误", f"处理过程中发生错误：{str(e)}")
-            self.status_var.set(f"处理失败: {str(e)}")
-        finally:
-            # 恢复按钮状态
-            self.remove_button.config(state=tk.NORMAL)
-            self.progress_var.set(0)
+            events.put(('failed', f'{type(e).__name__}: {e}'))
+
+    def _poll_batch_events(self):
+        """主线程轮询批处理事件队列：一切 UI 更新（含弹窗）只发生在这里。"""
+        try:
+            while True:
+                self._handle_batch_event(self.batch_queue.get_nowait())
+        except queue.Empty:
+            pass
+        except Exception as e:
+            self._fail_batch(f'{type(e).__name__}: {e}')
+            return
+        if self._batch_running:
+            self.root.after(_PROGRESS_POLL_MS, self._poll_batch_events)
+
+    def _handle_batch_event(self, event):
+        kind = event[0]
+        if kind == 'start':
+            self._apply_start_progress(event[1], event[2], event[3])
+        elif kind == 'file_done':
+            self._apply_done_progress(event[1], event[2])
+        elif kind == 'finished':
+            self._finish_batch(event[1])
+        elif kind == 'failed':
+            self._fail_batch(event[1])
+
+    def _apply_start_progress(self, index, total, input_path):
+        """进度分档渲染（#10）：1 个文件忙碌条；2 至阈值个报当前序号；超阈值只报完成数。"""
+        file_name = os.path.basename(input_path)
+        if total == 1:
+            self.progress_bar.config(mode='indeterminate')
+            self.progress_bar.start()
+            self.status_var.set(f"正在处理: {file_name}...")
+        elif total <= MANY_FILES_THRESHOLD:
+            self.status_var.set(f"正在处理 ({index}/{total}): {file_name}")
+            self.progress_var.set(index / total * 100)
+        # 超过阈值：开始事件不更新，等完成事件报已完成数
+
+    def _apply_done_progress(self, completed, total):
+        if total > MANY_FILES_THRESHOLD:
+            self.status_var.set(f"已处理 {completed} 个，共 {total} 个")
+            self.progress_var.set(completed / total * 100)
+
+    def _end_batch(self):
+        """批次收尾（主线程）：停止轮询、恢复按钮、进度条归位。"""
+        self._batch_running = False
+        self._set_processing_state(processing=False)
+        self._stop_progress_bar()
+
+    def _finish_batch(self, result: BatchResult):
+        """批次正常结束（主线程）：渲染结果与弹窗，恢复按钮与进度条。"""
+        self._end_batch()
+
+        if not result.results:
+            messagebox.showinfo("提示", "所选文件夹中没有找到Word文档(.docx)")
+            self.status_var.set("就绪")
+            return
+
+        self._render_results(result)
+
+        failed = result.failed
+        if failed:
+            summary = "\n".join(
+                f"{os.path.basename(r.input_path)}：{r.error}" for r in failed
+            )
+            messagebox.showwarning(
+                "完成",
+                f"样式清理完成：成功 {len(result.succeeded)} 个，失败 {len(failed)} 个\n\n{summary}",
+            )
+            self.status_var.set("处理完成（有失败）")
+        else:
+            done_msg = "样式清理完成（已覆盖原文件）！" if self._batch_overwrite else "样式清理完成！"
+            messagebox.showinfo("完成", done_msg)
+            self.status_var.set("处理完成")
+
+    def _fail_batch(self, message: str):
+        """批次异常（主线程）：错误弹窗 + 恢复按钮与进度条。"""
+        self._end_batch()
+        messagebox.showerror("错误", f"处理过程中发生错误：{message}")
+        self.status_var.set(f"处理失败: {message}")
+
+    def _set_processing_state(self, processing: bool):
+        """处理期间禁用删除与选择按钮，结束后恢复。"""
+        state = tk.DISABLED if processing else tk.NORMAL
+        self.remove_button.config(state=state)
+        self.choose_file_button.config(state=state)
+        self.choose_folder_button.config(state=state)
+
+    def _stop_progress_bar(self):
+        """进度条归位：停忙碌动画、回确定模式、清零。"""
+        self.progress_bar.stop()
+        self.progress_bar.config(mode='determinate')
+        self.progress_var.set(0)
 
     def _confirm_overwrite(self, target) -> bool:
         """覆盖模式执行前的确认弹窗，返回是否继续。"""
@@ -160,13 +266,6 @@ class WordStyleCleaner:
             f"已开启覆盖模式：清理结果将直接替换原文件，不再生成 _Q 副本，此操作无法撤销。\n\n{detail}\n\n确定继续吗？",
             default=messagebox.NO,
         )
-
-    def _on_batch_progress(self, index, total, input_path):
-        """batch module 的进度回调：刷新状态栏、进度条并重绘，避免白屏。"""
-        file_name = os.path.basename(input_path)
-        self.status_var.set(f"正在处理 ({index}/{total}): {file_name}")
-        self.progress_var.set(index / total * 100)
-        self.root.update()
 
     def _render_results(self, result: BatchResult):
         """渲染批处理汇总：逐文件删除样式明细 + 失败文件与原因。"""
