@@ -86,12 +86,13 @@ pip install -r requirements-dev.txt   # 运行依赖 + pytest
 python -m pytest tests/               # 运行测试（无需图形界面）
 ```
 
-## 后续计划
+## 项目状态
 
-- [x] 打包成免安装的单文件 exe（本地构建自用，暂不打 tag、不发 Release）
-- [ ] 界面支持英文
-- [ ] 清理前预览：先列出"将要删除的样式"供确认
-- [ ] 支持 `.doc` / WPS 格式
+个人学习与自用项目，按需维护。发现问题或有想法，欢迎[提 issue](https://github.com/sunanchn/word-style-cleaner/issues)。
+
+潜在方向（欢迎 PR，非承诺）：英文界面、清理前预览确认、`.doc`/WPS 支持。
+
+已知限制：python-docx 模板自带的约 19 个 "… Char" 影子样式（如 Header Char）会出现在删除明细中——无害，属既有行为。
 
 ## 许可证
 
