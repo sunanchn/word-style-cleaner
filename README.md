@@ -42,6 +42,13 @@ python style_cleaner.py
 - 清理效果很彻底：表格样式也会被删除，但表格中文字的格式不受影响
 - 建议处理前先备份原文档（或先在副本上试运行）
 
+## 开发与测试
+
+```bash
+pip install -r requirements-dev.txt   # 运行依赖 + pytest
+python -m pytest tests/               # 运行测试（无需图形界面）
+```
+
 ## 后续计划
 
 - [ ] 打包成免安装的 exe，发布到本仓库的 Releases 页面

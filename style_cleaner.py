@@ -5,6 +5,16 @@ from docx import Document
 import traceback
 from collections import defaultdict
 
+from cleaner import StyleCategory, clean_document
+
+# 清理结果的中性类别 → 中文展示名；展示词汇只存在于 GUI adapter
+CATEGORY_LABELS = {
+    StyleCategory.PARAGRAPH: '段落',
+    StyleCategory.CHARACTER: '字符',
+    StyleCategory.TABLE: '表格',
+    StyleCategory.OTHER: '其他',
+}
+
 class WordStyleCleaner:
     def __init__(self, root):
         self.root = root
@@ -201,78 +211,17 @@ class WordStyleCleaner:
         """从单个Word文件中删除未使用的样式"""
         # 加载 Word 文档
         document = Document(input_file_path)
-        
-        # 获取文档中使用的段落样式和表格样式
-        used_styles = set()
-        
-        # 检查段落样式
-        for paragraph in document.paragraphs:
-            if paragraph.style and paragraph.style.name:
-                used_styles.add(paragraph.style.name)
-        
-        # 检查表格样式
-        for table in document.tables:
-            if table.style and table.style.name:
-                used_styles.add(table.style.name)
-            # 检查表格中的段落样式
-            for row in table.rows:
-                for cell in row.cells:
-                    for paragraph in cell.paragraphs:
-                        if paragraph.style and paragraph.style.name:
-                            used_styles.add(paragraph.style.name)
-        
-        # 检查字符样式（新增）
-        for paragraph in document.paragraphs:
-            for run in paragraph.runs:
-                if run.style and run.style.name:
-                    used_styles.add(run.style.name)
-        
-        # 检查表格中的字符样式（新增）
-        for table in document.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    for paragraph in cell.paragraphs:
-                        for run in paragraph.runs:
-                            if run.style and run.style.name:
-                                used_styles.add(run.style.name)
-        
-        # 记录要删除的样式及其类型
-        styles_to_delete = []
-        style_types = {}  # 存储样式类型信息
-        
-        for style in document.styles:
-            if style.name not in used_styles and style.builtin == False:  # 不删除内置样式
-                styles_to_delete.append(style.name)
-                # 判断样式类型
-                if hasattr(style, 'type'):
-                    if style.type == 1:  # 段落样式
-                        style_types[style.name] = "段落"
-                    elif style.type == 2:  # 字符样式
-                        style_types[style.name] = "字符"
-                    elif style.type == 3:  # 表格样式
-                        style_types[style.name] = "表格"
-                    else:
-                        style_types[style.name] = "其他"
-                else:
-                    style_types[style.name] = "未知"
-        
-        # 删除未使用的自定义样式
-        deleted_styles = []
-        for style_name in styles_to_delete:
-            try:
-                document.styles[style_name].delete()
-                deleted_styles.append({
-                    'name': style_name,
-                    'type': style_types.get(style_name, '未知')
-                })
-            except Exception:
-                # 某些样式可能无法删除，忽略错误
-                continue
-        
+
+        # 清理未使用的自定义样式（核心逻辑在 cleaner module）
+        deleted = clean_document(document)
+
         # 保存新的 Word 文档
         document.save(output_file_path)
-        
-        return deleted_styles
+
+        return [
+            {'name': d.name, 'type': CATEGORY_LABELS[d.category]}
+            for d in deleted
+        ]
     
     def _update_style_list_display(self):
         """更新已删除样式的显示列表"""
