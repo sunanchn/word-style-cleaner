@@ -210,7 +210,16 @@ class WordStyleCleaner:
                 for name in sorted(by_label[label]):
                     self.result_text.insert(tk.END, f"       • {name}\n")
 
-if __name__ == "__main__":
+def launch():
+    """启动 GUI。由 cli.main() 在无参数时调用；保持 __main__ 入口单点分发。"""
     root = tk.Tk()
-    app = WordStyleCleaner(root)
+    WordStyleCleaner(root)
     root.mainloop()
+
+
+if __name__ == "__main__":
+    import sys
+
+    import cli
+
+    sys.exit(cli.main())
