@@ -1,6 +1,6 @@
 # Word 样式清理工具（word-style-cleaner）
 
-一个批量删除 Word 文档中**未使用样式**的小工具。提供图形界面和命令行两种用法：双击 exe 或无参数运行进入图形界面；带参数运行进入命令行模式。不需要安装 Word，不需要写代码。
+一个批量删除 Word 文档中**未使用样式**的小工具。提供图形界面和命令行两个程序：图形界面版 `word-style-cleaner.exe` 双击即用；命令行版 `word-style-cleaner-cli.exe` 供终端与脚本使用。不需要安装 Word，不需要写代码。
 
 ## 它解决什么问题
 
@@ -10,7 +10,7 @@
 
 ## 功能特点
 
-- 双模式单文件 exe：双击进图形界面（基于 tkinter），带参数进命令行
+- 两个单文件 exe：图形界面版 `word-style-cleaner.exe`（双击即用，无控制台窗口）+ 命令行版 `word-style-cleaner-cli.exe`
 - 图形界面与命令行都支持**单个文件**或**整个文件夹**批量处理
 - 两种输出模式：默认生成 `_Q` 副本（原文件不动）；可开启**覆盖原文件**模式（GUI 需弹窗确认，CLI 需显式 `--overwrite`）
 - 实时进度条，处理过程中始终显示当前文件名
@@ -29,10 +29,10 @@
 
 ```bash
 pip install -r requirements-dev.txt          # 含 python-docx + pytest + pyinstaller
-python -m PyInstaller --onefile --name word-style-cleaner --hidden-import style_cleaner --clean --noconfirm cli.py
+python -m PyInstaller --clean --noconfirm word-style-cleaner.spec
 ```
 
-产物为 `dist/word-style-cleaner.exe`，单文件、免安装，可直接拷到任何 Windows 机器（无需 Python）使用。
+一次构建产出两个单文件 exe（`dist/word-style-cleaner.exe` 图形界面版、`dist/word-style-cleaner-cli.exe` 命令行版），免安装，可直接拷到任何 Windows 机器（无需 Python）使用。
 
 ### 方式二：从源码运行
 
@@ -42,36 +42,40 @@ python -m PyInstaller --onefile --name word-style-cleaner --hidden-import style_
 # 1. 进入本目录，安装依赖（只有一个：python-docx）
 pip install -r requirements.txt
 
-# 2. 运行（无参数进 GUI，与 exe 行为一致）
+# 2. 运行图形界面（与 GUI 版 exe 行为一致）
 python style_cleaner.py
 ```
 
+命令行版对应 `python cli.py <参数>`，参数用法见下文 CLI 部分。
+
 ## 使用方法（GUI）
 
-1. 双击 `word-style-cleaner.exe`（或无参数运行），启动后点「选择文件」或「选择文件夹」
+1. 双击 `word-style-cleaner.exe`（源码方式为 `python style_cleaner.py`），启动后点「选择文件」或「选择文件夹」
 2. 点「删除未使用的样式」；如需直接写回原文件，先勾选「覆盖原文件」（会弹窗确认）
 3. 等进度条走完，查看统计信息和「处理详情」（含失败文件与原因）
 
-> 说明：exe 采用带控制台的打包方式（CLI 模式需要显示输出），因此双击进入图形界面时会同时出现一个控制台窗口，属正常现象，关闭它即退出程序。
+> 说明：图形界面版不接受命令行参数——带参数启动会弹窗提示改用 `word-style-cleaner-cli.exe`。命令行用法请看下一节。
 
 ## 使用方法（CLI）
 
-带参数运行同一 exe 即进入命令行模式（源码方式为 `python cli.py <参数>`）：
+使用命令行版 `word-style-cleaner-cli.exe`（源码方式为 `python cli.py <参数>`）：
 
 ```bash
 # 清理单个文件，生成 xxx_Q.docx 副本（原文件不动）
-word-style-cleaner.exe 文档.docx
+word-style-cleaner-cli.exe 文档.docx
 
 # 清理整个文件夹下所有 .docx（自动排除本工具生成的 _Q 副本）
-word-style-cleaner.exe D:\docs
+word-style-cleaner-cli.exe D:\docs
 
 # 覆盖模式：清理结果直接写回原文件，不生成副本（--overwrite 本身即确认，无交互）
-word-style-cleaner.exe 文档.docx --overwrite
+word-style-cleaner-cli.exe 文档.docx --overwrite
 ```
 
-处理结果逐文件输出（输出路径、按类别分组的删除样式明细），结束后汇总成功/失败数量。退出码：`0` 全部成功；`1` 存在失败或路径无效；`2` 参数错误。
+处理结果逐文件输出（输出路径、按类别分组的删除样式明细），结束后汇总成功/失败数量。退出码：`0` 全部成功；`1` 存在失败或路径无效；`2` 参数错误（无参数同此）。
 
-查看帮助：`word-style-cleaner.exe --help`
+查看帮助：`word-style-cleaner-cli.exe --help`
+
+> 自 v0.2 升级的用户注意：命令行用法由 `word-style-cleaner.exe <参数>` 改为 `word-style-cleaner-cli.exe <参数>`；旧 exe 带参数启动现在只会弹窗指路，不再进入命令行模式。
 
 ## 注意事项
 

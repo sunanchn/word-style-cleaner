@@ -1,4 +1,4 @@
-"""CLI adapter 的 seam 测试：真实小 .docx + capsys，GUI 路径用假 launch 隔离。"""
+"""CLI adapter 的 seam 测试：真实小 .docx + capsys，纯 CLI、零 GUI 依赖。"""
 import sys
 from pathlib import Path
 
@@ -16,18 +16,14 @@ def make_docx(path, unused_style='未使用样式'):
     return path
 
 
-@pytest.fixture(autouse=True)
-def no_gui(monkeypatch):
-    """拦截 GUI 启动：测试里绝不弹窗。"""
-    called = []
-    monkeypatch.setattr(cli, '_launch_gui', lambda: called.append(True) or 0)
-    return called
-
-
-def test_no_args_launches_gui(no_gui, capsys):
-    assert cli.main([]) == 0
-    assert no_gui == [True]
-    assert capsys.readouterr().out == ''
+def test_no_args_prints_usage_and_exits_2(capsys):
+    # CLI 版单一职责：无参数即参数错误，usage 指路 GUI 版（ADR-0002）
+    with pytest.raises(SystemExit) as exc_info:
+        cli.main([])
+    assert exc_info.value.code == 2
+    err = capsys.readouterr().err
+    assert 'word-style-cleaner.exe' in err  # usage 指路 GUI 版（prog 名不含 .exe）
+    assert '目标路径' in err
 
 
 def test_success_prints_output_path_and_deleted_styles(tmp_path, capsys):

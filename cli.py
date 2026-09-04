@@ -1,8 +1,8 @@
 """CLI adapter：参数解析、逐文件结果输出与退出码。
 
-单 exe 双模式入口（ADR-0001）：无参数启动 GUI；带参数进入 CLI。
-全程不弹任何 GUI 窗口——本 module 不 import tkinter，GUI 模式通过
-延迟 import style_cleaner 进入。--overwrite flag 即覆盖确认，无交互。
+CLI 版入口（ADR-0002）：纯命令行、单一职责——无参数按参数错误退出（exit 2），
+usage 指路 GUI 版（word-style-cleaner.exe）。全程不弹任何 GUI 窗口——本 module
+不 import tkinter。--overwrite flag 即覆盖确认，无交互。
 """
 import argparse
 import os
@@ -22,11 +22,14 @@ CATEGORY_LABELS = {
 # 参数错误由 argparse 以 2 退出；业务失败（无效路径/无可处理文件/任一文件失败）统一为 1
 EXIT_FAILURE = 1
 
+# GUI 指路文案：无参数/缺目标路径的错误信息里都带上
+GUI_HINT = '图形界面请运行 word-style-cleaner.exe'
+
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog='word-style-cleaner',
-        description='Word 样式清理工具：删除文档中未使用的样式。无参数启动图形界面。',
+        prog='word-style-cleaner-cli',
+        description=f'Word 样式清理工具：删除文档中未使用的样式。{GUI_HINT}。',
     )
     parser.add_argument(
         'target', nargs='?',
@@ -67,14 +70,12 @@ def _print_file_result(result: FileResult, index: int, total: int):
 
 
 def main(argv: list[str] | None = None) -> int:
-    """双模式入口：无参数启动 GUI；带参数进入 CLI。返回进程退出码。"""
+    """CLI 版入口：纯命令行，返回进程退出码。"""
     args_list = sys.argv[1:] if argv is None else argv
-    if not args_list:
-        return _launch_gui()
-
-    args = build_parser().parse_args(args_list)
+    parser = build_parser()
+    args = parser.parse_args(args_list)
     if args.target is None:
-        build_parser().error('缺少目标路径：单个 .docx 文件或文件夹')
+        parser.error(f'缺少目标路径：单个 .docx 文件或文件夹（{GUI_HINT}）')
 
     def on_progress(index, total, input_path):
         print(f'正在处理 ({index}/{total}): {os.path.basename(input_path)}')
@@ -97,13 +98,6 @@ def main(argv: list[str] | None = None) -> int:
     print(summary)
 
     return 0 if not result.failed else EXIT_FAILURE
-
-
-def _launch_gui() -> int:
-    """无参数路径：延迟 import GUI（tkinter），CLI 路径保持零 GUI 依赖。"""
-    import style_cleaner
-    style_cleaner.launch()
-    return 0
 
 
 if __name__ == '__main__':

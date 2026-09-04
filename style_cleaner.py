@@ -1,4 +1,5 @@
 import os
+import sys
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk, scrolledtext
 
@@ -211,15 +212,35 @@ class WordStyleCleaner:
                     self.result_text.insert(tk.END, f"       • {name}\n")
 
 def launch():
-    """启动 GUI。由 cli.main() 在无参数时调用；保持 __main__ 入口单点分发。"""
+    """启动 GUI。"""
     root = tk.Tk()
     WordStyleCleaner(root)
     root.mainloop()
 
 
+# GUI 版收到任何参数时的指路文案：不接受参数，命令行用法请用 CLI 版（ADR-0002）
+ARGS_TO_CLI_HINT = '图形界面版不接受参数，命令行请使用 word-style-cleaner-cli.exe'
+
+
+def _warn_args_not_supported():
+    """弹窗指路 CLI 版。独立成 seam 是为了让测试能隔离，不真弹窗。"""
+    root = tk.Tk()
+    root.withdraw()
+    try:
+        messagebox.showwarning('不支持参数', ARGS_TO_CLI_HINT)
+    finally:
+        root.destroy()
+
+
+def main(argv: list[str] | None = None) -> int:
+    """GUI 版入口（ADR-0002）：无参数启动 GUI；带任何参数弹窗指路 CLI 版并以非零码退出。"""
+    args_list = sys.argv[1:] if argv is None else argv
+    if args_list:
+        _warn_args_not_supported()
+        return 2
+    launch()
+    return 0
+
+
 if __name__ == "__main__":
-    import sys
-
-    import cli
-
-    sys.exit(cli.main())
+    sys.exit(main())
