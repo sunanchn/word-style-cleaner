@@ -43,6 +43,14 @@ class WordStyleCleaner:
         self._batch_overwrite = False
 
     def create_widgets(self):
+        # 状态栏必须最先 pack：pack 按调用顺序切分空间，若排在可扩展的
+        # 处理详情区之后，会被挤成零高度而完全不可见（#10 实测踩坑）
+        self.status_var = tk.StringVar()
+        self.status_var.set("就绪")
+        status_label = tk.Label(self.root, textvariable=self.status_var, bd=1, relief=tk.SUNKEN, anchor=tk.W)
+        self.status_label = status_label
+        status_label.pack(side=tk.BOTTOM, fill=tk.X)
+
         # 创建选择文件或者文件夹的框架
         selection_frame = tk.Frame(self.root)
         selection_frame.pack(pady=10, fill=tk.X, padx=10)
@@ -88,16 +96,10 @@ class WordStyleCleaner:
         style_list_frame = tk.LabelFrame(self.root, text="处理详情")
         style_list_frame.pack(pady=5, fill=tk.BOTH, expand=True, padx=10)
 
-        # 创建文本显示区域（移除标签页）
-        self.result_text = scrolledtext.ScrolledText(style_list_frame, wrap=tk.WORD)
+        # 创建文本显示区域（移除标签页）；显式行高避免默认 24 行撑爆窗口
+        self.result_text = scrolledtext.ScrolledText(style_list_frame, wrap=tk.WORD, height=10)
         self.result_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         self.result_text.config(state=tk.DISABLED)
-
-        # 创建状态栏
-        self.status_var = tk.StringVar()
-        self.status_var.set("就绪")
-        status_label = tk.Label(self.root, textvariable=self.status_var, bd=1, relief=tk.SUNKEN, anchor=tk.W)
-        status_label.pack(side=tk.BOTTOM, fill=tk.X)
 
     def _clear_results(self):
         """选择新目标后清空上一轮的处理详情。"""

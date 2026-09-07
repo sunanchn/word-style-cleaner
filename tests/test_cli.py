@@ -110,10 +110,10 @@ def test_flag_without_target_is_param_error(capsys):
     assert '目标路径' in capsys.readouterr().err
 
 
-def test_cli_path_never_imports_tkinter(tmp_path):
-    # GUI 只允许在 _launch_gui 里延迟 import，CLI 路径保持零 GUI 依赖
+def test_cli_path_never_imports_tkinter(tmp_path, monkeypatch):
+    # CLI 路径保持零 GUI 依赖；delitem 会话结束自动恢复，避免污染后续真 Tk 测试
     make_docx(tmp_path / 'a.docx')
-    sys.modules.pop('tkinter', None)
+    monkeypatch.delitem(sys.modules, 'tkinter', raising=False)
 
     cli.main([str(tmp_path)])
 

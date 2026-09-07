@@ -399,3 +399,22 @@ def test_poll_survives_handler_crash_by_failing_batch(monkeypatch):
 
     assert failures
     assert app._batch_running is False
+
+
+def test_status_bar_packed_before_expanding_details():
+    """布局回归（#10 实测踩坑）：pack 按调用顺序切分空间，状态栏若排在
+    可扩展的处理详情区之后会被挤成零高度而完全不可见。用真 Tk 验证 pack
+    顺序（withdraw 不显示窗口）；无显示环境时跳过。"""
+    import tkinter as tk
+
+    try:
+        root = tk.Tk()
+    except tk.TclError:
+        pytest.skip('环境无显示，跳过真 Tk 布局回归')
+    try:
+        root.withdraw()
+        app = style_cleaner.WordStyleCleaner(root)
+        # pack_slaves 按打包顺序返回；状态栏必须最先占住底部切片
+        assert root.pack_slaves()[0] is app.status_label
+    finally:
+        root.destroy()
