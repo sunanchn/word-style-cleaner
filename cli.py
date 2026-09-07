@@ -33,7 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         'target', nargs='?',
-        help='目标路径：单个 .docx 文件或文件夹（同层 .docx，排除自产 _Q 输出）',
+        help='目标路径：单个 .docx 文件或文件夹（递归含子文件夹，排除自产 _Q 输出与 ~$ 锁文件）',
     )
     parser.add_argument(
         '--overwrite', action='store_true',

@@ -33,6 +33,36 @@ def test_discover_excludes_self_outputs(tmp_path):
     assert [Path(p).name for p in found] == ['报告.docx']
 
 
+def test_discover_recurses_into_subfolders(tmp_path):
+    make_docx(tmp_path / '根.docx')
+    sub = tmp_path / '2024'
+    sub.mkdir()
+    make_docx(sub / '年报.docx')
+    deep = sub / '项目A'
+    deep.mkdir()
+    make_docx(deep / '方案.docx')
+
+    found = discover_docx(str(tmp_path))
+
+    # 递归发现所有层级，按完整路径排序输出
+    assert [Path(p).relative_to(tmp_path).as_posix() for p in found] == [
+        '2024/年报.docx', '2024/项目A/方案.docx', '根.docx',
+    ]
+
+
+def test_discover_excludes_word_lock_files(tmp_path):
+    make_docx(tmp_path / '报告.docx')
+    # Word 打开文档时的锁文件：~$ 开头、不是真实文档
+    (tmp_path / '~$报告.docx').write_bytes(b'lock')
+    sub = tmp_path / 'sub'
+    sub.mkdir()
+    (sub / '~$别的.docx').write_bytes(b'lock')
+
+    found = discover_docx(str(tmp_path))
+
+    assert [Path(p).name for p in found] == ['报告.docx']
+
+
 def test_folder_rerun_skips_q_outputs_without_suffix_stacking(tmp_path):
     make_docx(tmp_path / '报告.docx')
     # 上一轮已产出的 _Q 输出

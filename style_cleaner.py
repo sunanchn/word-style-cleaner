@@ -118,7 +118,7 @@ class WordStyleCleaner:
             self.file_path_var.set(folder_path)
             # 待处理数量与 batch module 用同一套发现规则（排除自产 _Q 输出）
             docx_count = len(discover_docx(folder_path))
-            self.status_var.set(f"已选择文件夹，包含 {docx_count} 个Word文档")
+            self.status_var.set(f"已选择文件夹，包含 {docx_count} 个Word文档（含子文件夹）")
             self._clear_results()
 
     def remove_unused_styles(self):
@@ -260,7 +260,7 @@ class WordStyleCleaner:
     def _confirm_overwrite(self, target) -> bool:
         """覆盖模式执行前的确认弹窗，返回是否继续。"""
         if os.path.isdir(target):
-            detail = f"目标文件夹：{target}\n包含 {len(discover_docx(target))} 个Word文档(.docx)"
+            detail = f"目标文件夹：{target}\n递归包含子文件夹，共 {len(discover_docx(target))} 个Word文档(.docx)"
         else:
             detail = f"目标文件：{target}"
         return messagebox.askyesno(

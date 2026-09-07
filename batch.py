@@ -1,4 +1,4 @@
-"""批量处理 module：.docx 发现、_Q 命名与防覆盖、逐文件清理与结果汇总。
+"""批量处理 module：.docx 发现（递归子文件夹）、_Q 命名与防覆盖、逐文件清理与结果汇总。
 
 不碰 GUI：进度通过回调上报，弹窗与展示由 adapter（GUI/CLI）负责。
 自产输出指本工具生成的 `_Q` 副本及其防覆盖变体 `_Q(数字)`；文件夹发现时排除，
@@ -45,13 +45,19 @@ class BatchResult:
 
 
 def discover_docx(folder: str) -> list[str]:
-    """列出文件夹中的 .docx（不递归），排除自产 _Q 输出；按文件名排序。"""
-    names = [
-        name for name in os.listdir(folder)
-        if name.lower().endswith('.docx')
-        and not _SELF_OUTPUT_RE.search(os.path.splitext(name)[0])
-    ]
-    return [os.path.join(folder, name) for name in sorted(names)]
+    """递归列出文件夹（含子文件夹）中的 .docx，排除自产 _Q 输出与 `~$` Word 锁文件；按完整路径排序。"""
+    found = []
+    for dirpath, _dirnames, filenames in os.walk(folder):
+        for name in filenames:
+            stem = os.path.splitext(name)[0]
+            if not name.lower().endswith('.docx'):
+                continue
+            if _SELF_OUTPUT_RE.search(stem):
+                continue
+            if name.startswith('~$'):
+                continue
+            found.append(os.path.join(dirpath, name))
+    return sorted(found)
 
 
 def _output_path_for(input_path: str) -> str:
